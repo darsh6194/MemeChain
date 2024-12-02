@@ -33,13 +33,15 @@ import {
   CardGiftcard as GiftIcon
 } from '@mui/icons-material';
 import { keyframes, styled } from '@mui/system';
+import { ethers } from 'ethers';
+import MEMEToken from './MEMEToken.json';
 
 function MemeChain() {
   const [account, setAccount] = useState('');
   const [memes, setMemes] = useState([]);
   const [ipfsHash, setIpfsHash] = useState('');
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [balance, setBalance] = useState('0.00');
+  const [contract, setContract] = useState(null);
 
   // Enhanced glitch animation
   const enhancedGlitchAnimation = keyframes`
@@ -97,40 +99,117 @@ function MemeChain() {
     }
   }));
 
-  const connectWallet = () => {
-    const mockAccount = '0x' + Math.random().toString(36).substring(2, 12);
-    setAccount(mockAccount);
+  const connectWallet = async () => {
+    try {
+      if (window.ethereum) {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send("eth_requestAccounts", []);
+        const signer = provider.getSigner();
+        const address = await signer.getAddress();
+        
+        // Reset the network to clear any stale nonce
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0x7A69", // 31337 for Hardhat
+            rpcUrls: ["http://127.0.0.1:8545/"],
+            chainName: "Hardhat Local",
+            nativeCurrency: {
+              name: "ETH",
+              symbol: "ETH",
+              decimals: 18
+            },
+          }]
+        });
+
+        const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
+        console.log("Contract Address:", contractAddress); // Debug log
+        
+        const contract = new ethers.Contract(
+          contractAddress,
+          MEMEToken.abi,
+          signer
+        );
+
+        // Verify contract connection
+        try {
+          const name = await contract.name();
+          console.log("Token name:", name); // Should print "MemeChain Token"
+        } catch (error) {
+          console.error("Contract verification failed:", error);
+          throw new Error("Contract verification failed");
+        }
+
+        setContract(contract);
+        setAccount(address);
+        
+        const balance = await contract.balanceOf(address);
+        setBalance(ethers.utils.formatEther(balance));
+
+        contract.on("Transfer", async (from, to, amount) => {
+          if (from === address || to === address) {
+            const newBalance = await contract.balanceOf(address);
+            setBalance(ethers.utils.formatEther(newBalance));
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+      alert("Error connecting to wallet. Please make sure you're connected to the correct network.");
+    }
   };
 
-  const createMeme = () => {
-    if (!ipfsHash) {
-      alert("Please enter an IPFS hash");
+  const createMeme = async () => {
+    if (!ipfsHash || !contract) {
+      alert("Please enter an IPFS hash and connect wallet");
       return;
     }
 
-    const newMeme = {
-      id: memes.length + 1,
-      creator: account,
-      ipfsHash: ipfsHash,
-      likes: 0,
-      liked: false,
-      comments: [],
-      timestamp: new Date().toISOString()
-    };
-    setMemes([newMeme, ...memes]);
-    setIpfsHash('');
+    try {
+      // Call the smart contract to create meme
+      const tx = await contract.createMeme(ipfsHash);
+      await tx.wait();
+
+      const newMeme = {
+        id: memes.length + 1,
+        creator: account,
+        ipfsHash: ipfsHash,
+        likes: 0,
+        liked: false,
+        comments: [],
+        timestamp: new Date().toISOString()
+      };
+      
+      setMemes([newMeme, ...memes]);
+      setIpfsHash('');
+
+      // Balance will automatically update through the Transfer event listener
+    } catch (error) {
+      console.error("Error creating meme:", error);
+      alert("Error creating meme. Please try again.");
+    }
   };
 
-  const handleLike = (memeId) => {
-    setMemes(memes.map(meme =>
-      meme.id === memeId
-        ? { 
-            ...meme, 
-            likes: meme.liked ? meme.likes - 1 : meme.likes + 1, 
-            liked: !meme.liked 
-          }
-        : meme
-    ));
+  const handleLike = async (memeId) => {
+    if (!contract) return;
+
+    try {
+      const tx = await contract.likeMeme(memeId);
+      await tx.wait();
+
+      setMemes(memes.map(meme =>
+        meme.id === memeId
+          ? { 
+              ...meme, 
+              likes: meme.liked ? meme.likes - 1 : meme.likes + 1, 
+              liked: !meme.liked 
+            }
+          : meme
+      ));
+    } catch (error) {
+      console.error("Error liking meme:", error);
+      alert("Error liking meme. Please try again.");
+    }
   };
 
   // Predefined meme templates with liked state
@@ -156,11 +235,6 @@ function MemeChain() {
   const shine = keyframes`
     from { transform: translateX(-100%); }
     to { transform: translateX(100%); }
-  `;
-
-  const progressAnimation = keyframes`
-    from { background-position: 1rem 0; }
-    to { background-position: 0 0; }
   `;
 
   return (
@@ -277,7 +351,7 @@ function MemeChain() {
                     }} 
                   />
                   <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
-                    {balance} ETH
+                    {balance} MEME
                   </Typography>
                 </Box>
 
@@ -320,19 +394,8 @@ function MemeChain() {
                           borderRadius: 5,
                           backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent)',
                           backgroundSize: '1rem 1rem',
-                          animation: 'progress-animation 1s linear infinite'
+                          animation: `${shine} 2s infinite`
                         }
-                      }}
-                    />
-                    <Box
-                      sx={{
-                        width: '100%',
-                        height: '100%',
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
-                        animation: 'shine 2s infinite',
                       }}
                     />
                   </Box>
