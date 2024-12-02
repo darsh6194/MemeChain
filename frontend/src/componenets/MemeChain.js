@@ -111,7 +111,7 @@ function MemeChain() {
         await window.ethereum.request({
           method: "wallet_addEthereumChain",
           params: [{
-            chainId: "0x7A69", // 31337 for Hardhat
+            chainId: 1337, // 31337 for Hardhat
             rpcUrls: ["http://127.0.0.1:8545/"],
             chainName: "Hardhat Local",
             nativeCurrency: {
