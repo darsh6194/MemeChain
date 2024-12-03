@@ -103,10 +103,10 @@ You can find the contract in the `contracts/MemeChain.sol` file.
 ---
 
 ## **Screenshots**  
-![Meme Upload Screen](https://via.placeholder.com/800x400?text=Screenshot+1)  
+![Meme Upload Screen](https://devfolio.co/_next/image?url=https%3A%2F%2Fassets.devfolio.co%2Fhackathons%2Fbeea3a652dd04c86b1890bd76bca5451%2Fprojects%2Fc4308cf07a364a46ba277dc5db9ed8a0%2Fbcff67d1-c4b1-41a6-ab43-28b02ecee66c.png&w=1440&q=75)  
 *Meme upload page with MetaMask integration*  
 
-![Meme Gallery](https://via.placeholder.com/800x400?text=Screenshot+2)  
+![Meme Gallery]()  
 *Gallery showcasing uploaded memes*  
 
 ---
