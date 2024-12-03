@@ -9,8 +9,11 @@ A decentralized application (dApp) for uploading, sharing, and managing memes on
 - [Usage](#usage)  
 - [Smart Contract](#smart-contract)  
 - [Screenshots](#screenshots)  
+- [Demo Video](#demo-video)  
 - [Future Enhancements](#future-enhancements)  
-- [License](#license)
+- [License](#license)  
+- [Contributing](#contributing)  
+- [Contact](#contact)
 
 ---
 
@@ -63,15 +66,15 @@ npm install
 ### **3. Configure Environment Variables**  
 Create a `.env` file in the backend directory and add the following:  
 ```bash  
-REACT_APP_ADDRESS = "local wallet address"
+PRIVATE_KEY=<Your Ethereum Wallet Private Key>  
+INFURA_API_URL=<Infura Project URL>  
 ```
 
 ### **4. Compile and Deploy Smart Contracts**  
 ```bash  
 cd backend
-npx hardhat compile
-npx hardhat node
-npx hardhat run scripts/deploy.js --network localhost
+npx hardhat compile  
+npx hardhat run scripts/deploy.js --network goerli  
 ```
 
 ### **5. Start the Frontend**  
@@ -106,11 +109,13 @@ You can find the contract in the `contracts/MemeChain.sol` file.
 ![Meme Gallery](https://via.placeholder.com/800x400?text=Screenshot+2)  
 *Gallery showcasing uploaded memes*  
 
-## Demo Video
+---
 
-Watch the full demo of **MemeChain** in action below:
+## **Demo Video**  
 
-<iframe width="560" height="315" src="https://youtu.be/-3vmBqWZXjA" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+Watch the full demo of **MemeChain** in action on YouTube:
+
+[![MemeChain Demo](https://img.youtube.com/vi/-3vmBqWZXjA/0.jpg)](https://youtu.be/-3vmBqWZXjA)
 
 ---
 
@@ -136,5 +141,5 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 Feel free to reach out with any questions or feedback!  
 
 👤 **M Darshan**  
-📧 Email: yourname@example.com  
-🔗 LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourusername)
+📧 Email: darshanmaharaja1@gmail.com  
+🔗 LinkedIn: [Your LinkedIn](https://www.linkedin.com/in/darshan-maharaja-5445bb149/)
