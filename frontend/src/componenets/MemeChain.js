@@ -42,6 +42,15 @@ function MemeChain() {
   const [ipfsHash, setIpfsHash] = useState('');
   const [balance, setBalance] = useState('0.00');
   const [contract, setContract] = useState(null);
+  const [provider, setProvider] = useState(null);
+  const [signer, setSigner] = useState(null);
+  const [predefinedMemes, setPredefinedMemes] = useState([
+    { id: 1, creator: '0x123', ipfsHash: 'QmX...1', likes: 42, liked: false },
+    { id: 2, creator: '0x234', ipfsHash: 'QmY...2', likes: 15, liked: false },
+    { id: 3, creator: '0x345', ipfsHash: 'QmZ...3', likes: 88, liked: false },
+    { id: 4, creator: '0x456', ipfsHash: 'QmW...4', likes: 23, liked: false },
+    { id: 5, creator: '0x567', ipfsHash: 'QmV...5', likes: 56, liked: false },
+  ]);
 
   // Enhanced glitch animation
   const enhancedGlitchAnimation = keyframes`
@@ -101,77 +110,102 @@ function MemeChain() {
 
   const connectWallet = async () => {
     try {
-      if (window.ethereum) {
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        await provider.send("eth_requestAccounts", []);
-        const signer = provider.getSigner();
-        const address = await signer.getAddress();
-        
-        // Reset the network to clear any stale nonce
-        await window.ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: [{
-            chainId: 1337, // 31337 for Hardhat
-            rpcUrls: ["http://127.0.0.1:8545/"],
-            chainName: "Hardhat Local",
-            nativeCurrency: {
-              name: "ETH",
-              symbol: "ETH",
-              decimals: 18
-            },
-          }]
-        });
-
-        const contractAddress = process.env.REACT_APP_CONTRACT_ADDRESS;
-        console.log("Contract Address:", contractAddress); // Debug log
-        
-        const contract = new ethers.Contract(
-          contractAddress,
-          MEMEToken.abi,
-          signer
-        );
-
-        // Verify contract connection
-        try {
-          const name = await contract.name();
-          console.log("Token name:", name); // Should print "MemeChain Token"
-        } catch (error) {
-          console.error("Contract verification failed:", error);
-          throw new Error("Contract verification failed");
-        }
-
-        setContract(contract);
-        setAccount(address);
-        
-        const balance = await contract.balanceOf(address);
-        setBalance(ethers.utils.formatEther(balance));
-
-        contract.on("Transfer", async (from, to, amount) => {
-          if (from === address || to === address) {
-            const newBalance = await contract.balanceOf(address);
-            setBalance(ethers.utils.formatEther(newBalance));
-          }
-        });
+      if (!window.ethereum) {
+        throw new Error("Please install MetaMask");
       }
+
+      // Switch to local network
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0x539' }], // 1337 in hex
+        });
+      } catch (switchError) {
+        console.error("Switch error:", switchError);
+        if (switchError.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: '0x539',
+              chainName: 'Local Network',
+              nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+              rpcUrls: ['http://127.0.0.1:8545']
+            }]
+          });
+        }
+      }
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send("eth_requestAccounts", []);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+      
+      const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Use the address from deployment
+      console.log("Using contract address:", contractAddress);
+
+      if (!contractAddress) {
+        throw new Error("Contract address not configured");
+      }
+
+      const contract = new ethers.Contract(
+        contractAddress,
+        MEMEToken.abi,
+        signer
+      );
+
+      // Format balance with ethers utils
+      const balance = await contract.balanceOf(address);
+      const formattedBalance = ethers.utils.formatUnits(balance, 18); // Use 18 decimals
+      setBalance(formattedBalance);
+
+      // Add event listener for balance updates
+      contract.on("Transfer", async (from, to, amount) => {
+        if (from === address || to === address) {
+          const newBalance = await contract.balanceOf(address);
+          const formattedNewBalance = ethers.utils.formatUnits(newBalance, 18);
+          setBalance(formattedNewBalance);
+          console.log("Balance updated:", formattedNewBalance);
+        }
+      });
+
+      // Basic contract verification
+      const name = await contract.name();
+      console.log("Contract name:", name);
+      
+      setProvider(provider);
+      setSigner(signer);
+      setContract(contract);
+      setAccount(address);
+
     } catch (error) {
-      console.error("Error connecting wallet:", error);
-      alert("Error connecting to wallet. Please make sure you're connected to the correct network.");
+      console.error("Detailed error:", error);
+      alert(`Connection error: ${error.message}`);
     }
   };
 
   const createMeme = async () => {
-    if (!ipfsHash || !contract) {
-      alert("Please enter an IPFS hash and connect wallet");
+    if (!contract || !ipfsHash) {
+      alert("Please connect wallet and enter IPFS hash");
       return;
     }
 
     try {
-      // Call the smart contract to create meme
+      console.log("Creating meme with hash:", ipfsHash);
       const tx = await contract.createMeme(ipfsHash);
       await tx.wait();
+      console.log("Meme created, transaction completed");
+
+      // Update balance after meme creation
+      const newBalance = await contract.balanceOf(account);
+      const formattedNewBalance = ethers.utils.formatUnits(newBalance, 18);
+      setBalance(formattedNewBalance);
+
+      // Get the total memes count from contract
+      const totalMemes = await contract.getTotalMemes();
+      const memeId = totalMemes.toNumber();
 
       const newMeme = {
-        id: memes.length + 1,
+        id: memeId,
         creator: account,
         ipfsHash: ipfsHash,
         likes: 0,
@@ -180,10 +214,9 @@ function MemeChain() {
         timestamp: new Date().toISOString()
       };
       
-      setMemes([newMeme, ...memes]);
+      console.log("Adding new meme:", newMeme);
+      setMemes(prevMemes => [newMeme, ...prevMemes]);
       setIpfsHash('');
-
-      // Balance will automatically update through the Transfer event listener
     } catch (error) {
       console.error("Error creating meme:", error);
       alert("Error creating meme. Please try again.");
@@ -211,15 +244,6 @@ function MemeChain() {
       alert("Error liking meme. Please try again.");
     }
   };
-
-  // Predefined meme templates with liked state
-  const predefinedMemes = [
-    { id: 1, creator: '0x123', ipfsHash: 'QmX...1', likes: 42, liked: false },
-    { id: 2, creator: '0x234', ipfsHash: 'QmY...2', likes: 15, liked: false },
-    { id: 3, creator: '0x345', ipfsHash: 'QmZ...3', likes: 88, liked: false },
-    { id: 4, creator: '0x456', ipfsHash: 'QmW...4', likes: 23, liked: false },
-    { id: 5, creator: '0x567', ipfsHash: 'QmV...5', likes: 56, liked: false },
-  ];
 
   const calculateProgress = () => {
     // Return a fixed demo value of 65%
@@ -394,7 +418,7 @@ function MemeChain() {
                           borderRadius: 5,
                           backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent)',
                           backgroundSize: '1rem 1rem',
-                          animation: `${shine} 2s infinite`
+                          animation: `${shine} 2s `
                         }
                       }}
                     />
@@ -477,123 +501,125 @@ function MemeChain() {
               </Box>
 
               {/* Meme Feed */}
-              {predefinedMemes.concat(memes).map((meme) => (
-                <Card
-                  key={meme.id}
-                  sx={{
-                    marginBottom: 2,
-                    borderRadius: 2,
-                    boxShadow: '0 8px 20px rgba(0,0,0,0.2)',
-                    bgcolor: 'rgba(30,30,30,0.8)',
-                    transition: 'transform 0.3s',
-                    '&:hover': {
-                      transform: 'scale(1.02)',
-                      boxShadow: '0 12px 24px rgba(0,0,0,0.3)'
-                    }
-                  }}
-                >
-                  {/* Post Header */}
-                  <CardHeader
-                    avatar={
-                      <Avatar sx={{ 
-                        bgcolor: 'primary.main',
-                        border: '2px solid rgba(255,255,255,0.2)'
-                      }}>
-                        {meme.creator.slice(2, 3).toUpperCase()}
-                      </Avatar>
-                    }
-                    title={
-                      <Typography variant="subtitle2" fontWeight="bold" color="primary.light">
-                        {meme.creator.slice(0, 6)}...{meme.creator.slice(-4)}
-                      </Typography>
-                    }
-                  />
+              <Box>
+                {[...memes, ...predefinedMemes].map((meme) => (
+                  <Card
+                    key={`${meme.id}-${meme.creator}`}
+                    sx={{
+                      marginBottom: 2,
+                      borderRadius: 2,
+                      boxShadow: '0 8px 20px rgba(0,0,0,0.2)',
+                      bgcolor: 'rgba(30,30,30,0.8)',
+                      transition: 'transform 0.3s',
+                      '&:hover': {
+                        transform: 'scale(1.02)',
+                        boxShadow: '0 12px 24px rgba(0,0,0,0.3)'
+                      }
+                    }}
+                  >
+                    {/* Post Header */}
+                    <CardHeader
+                      avatar={
+                        <Avatar sx={{ 
+                          bgcolor: 'primary.main',
+                          border: '2px solid rgba(255,255,255,0.2)'
+                        }}>
+                          {meme.creator.slice(2, 3).toUpperCase()}
+                        </Avatar>
+                      }
+                      title={
+                        <Typography variant="subtitle2" fontWeight="bold" color="primary.light">
+                          {meme.creator.slice(0, 6)}...{meme.creator.slice(-4)}
+                        </Typography>
+                      }
+                    />
 
-                  {/* Meme Image */}
-                  <CardContent sx={{
-                    padding: 0,
-                    '&:last-child': { paddingBottom: 0 }
-                  }}>
-                    <Box
-                      sx={{
-                        bgcolor: 'rgba(50,50,50,0.5)',
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        aspectRatio: '1/1'
-                      }}
-                    >
-                      <img
-                        src={meme.ipfsHash.startsWith('Qm')
-                          ? `https://gateway.pinata.cloud/ipfs/${meme.ipfsHash}`
-                          : meme.ipfsHash
-                        }
-                        alt="Meme"
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '100%',
-                          objectFit: 'contain'
+                    {/* Meme Image */}
+                    <CardContent sx={{
+                      padding: 0,
+                      '&:last-child': { paddingBottom: 0 }
+                    }}>
+                      <Box
+                        sx={{
+                          bgcolor: 'rgba(50,50,50,0.5)',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          aspectRatio: '1/1'
                         }}
-                        onError={(e) => {
-                          e.target.src = '/api/placeholder/400/400';
-                          e.target.alt = 'Placeholder Meme';
-                        }}
-                      />
-                    </Box>
-                  </CardContent>
+                      >
+                        <img
+                          src={meme.ipfsHash.startsWith('Qm')
+                            ? `https://gateway.pinata.cloud/ipfs/${meme.ipfsHash}`
+                            : meme.ipfsHash
+                          }
+                          alt="Meme"
+                          style={{
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain'
+                          }}
+                          onError={(e) => {
+                            e.target.src = '/api/placeholder/400/400';
+                            e.target.alt = 'Placeholder Meme';
+                          }}
+                        />
+                      </Box>
+                    </CardContent>
 
-                  {/* Post Actions */}
-                  <CardContent>
-                    <Box
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
-                      <Box display="flex" gap={2}>
-                        <IconButton
-                          color={meme.liked ? 'error' : 'default'}
-                          onClick={() => handleLike(meme.id)}
-                        >
-                          {meme.liked ? <FavoriteIcon /> : <FavoriteOutlinedIcon />}
-                          <Typography 
-                            variant="caption" 
-                            ml={1} 
-                            color={meme.liked ? 'error' : 'text.secondary'}
+                    {/* Post Actions */}
+                    <CardContent>
+                      <Box
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                      >
+                        <Box display="flex" gap={2}>
+                          <IconButton
+                            color={meme.liked ? 'error' : 'default'}
+                            onClick={() => handleLike(meme.id)}
                           >
-                            {meme.likes}
-                          </Typography>
-                        </IconButton>
+                            {meme.liked ? <FavoriteIcon /> : <FavoriteOutlinedIcon />}
+                            <Typography 
+                              variant="caption" 
+                              ml={1} 
+                              color={meme.liked ? 'error' : 'text.secondary'}
+                            >
+                              {meme.likes}
+                            </Typography>
+                          </IconButton>
+                          <IconButton color="default">
+                            <CommentIcon />
+                          </IconButton>
+                          <IconButton color="default">
+                            <SendIcon />
+                          </IconButton>
+                          <IconButton color="default">
+                            <GiftIcon sx={{ color: '#4CAF50' }} />
+                          </IconButton>
+                        </Box>
                         <IconButton color="default">
-                          <CommentIcon />
-                        </IconButton>
-                        <IconButton color="default">
-                          <SendIcon />
-                        </IconButton>
-                        <IconButton color="default">
-                          <GiftIcon sx={{ color: '#4CAF50' }} />
+                          <BookmarkIcon />
                         </IconButton>
                       </Box>
-                      <IconButton color="default">
-                        <BookmarkIcon />
-                      </IconButton>
-                    </Box>
 
-                    {/* Likes */}
-                    <Typography 
-                      variant="subtitle2" 
-                      fontWeight="bold" 
-                      color="primary.light"
-                    >
-                      {meme.likes} likes
-                    </Typography>
+                      {/* Likes */}
+                      <Typography 
+                        variant="subtitle2" 
+                        fontWeight="bold" 
+                        color="primary.light"
+                      >
+                        {meme.likes} likes
+                      </Typography>
 
-                    {/* Timestamp */}
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(meme.timestamp).toLocaleDateString()}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              ))}
+                      {/* Timestamp */}
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(meme.timestamp).toLocaleDateString()}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
             </Box>
           )}
         </Container>
